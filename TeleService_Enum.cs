@@ -2,11 +2,11 @@
 {
     public enum eTeleMediaType { Photo, Document }
     public enum eTeleMediaFilter { All, Photo, Document }
-    public enum eTeleMediaDownloadStatus { NotStarted, InProgress, Completed, Failed, Error }
+    public enum eTeleMediaDownloadStatus { NotStarted, InProgress, Completed, Failed, Error , Watching , Paused }
     public enum eTelePerrType { User, Chat, Channel }
     public enum eMessageDirection { NewestToOldest, OldestToNewest }
     public enum eDownloadPriority { High = 1, Medium = 2, Low = 3 }
-    public enum eDownloadOpportunity { isMultiThreaded, isSingleThreaded, isRetryOnError, isRetryOnFailure, isTryAgainAfterError, isWatingForNetWork, isUseDelayAfterError }
+    //public enum eDownloadOpportunity { isMultiThreadedر, isSingleThreaded, isRetryAfterError, isAutoResumeAfterWaitingForNetwork  , isAutoResumeAfterOpen , isMinimizeDiskIO }
     public enum eDownloadChunkSize
     {
         KB_128 = 1,    // 128 KB

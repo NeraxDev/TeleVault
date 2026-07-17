@@ -17,6 +17,7 @@ namespace TeleVault
         {
             client = new Client(apiId, apiHash, phoneNumber);
         }
+
         //======================================== Media Retrieval Methods ================================
         /// <summary>
         /// Retrieves media information from a Telegram message URL, extracting the username and message ID, and then fetching the associated media based on the specified type.
@@ -29,6 +30,7 @@ namespace TeleVault
             var data = await ParseUrl(url);
             return await GetMediasByMsgId(data.username, data.messageId, type, data.onlyDownloadFirst);
         }
+
         /// <summary>
         /// Retrieves media information from a specific Telegram message ID within a channel, chat, or user context.
         /// </summary>
@@ -39,7 +41,6 @@ namespace TeleVault
         /// <returns>A list of media information</returns>
         public async Task<List<TeleMediaInfo>> GetMediasByMsgId(string channelUsername, int messageId, eTelePerrType type, bool onlyDownloadFirst)
         {
-
             var resultList = new List<TeleMediaInfo>();
             var resolved = await client.Contacts_ResolveUsername(channelUsername);
             var peerInfo = resolved.UserOrChat;
@@ -69,7 +70,6 @@ namespace TeleVault
             MessageBase[] messageList = messagesBase.Messages;
             MessageBase[] targetMessages = onlyDownloadFirst ? messageList.Take(1).ToArray() : messageList;
 
-
             foreach (MessageBase msgBase in targetMessages)
             {
                 if (msgBase is Message msg)
@@ -80,6 +80,7 @@ namespace TeleVault
             }
             return resultList;
         }
+
         /// <summary>
         /// Retrieves all media information from a Telegram channel, chat, or user based on the specified username, media type, filter, and message direction. It fetches messages in batches to avoid hitting Telegram's flood limits.
         /// </summary>
@@ -94,6 +95,7 @@ namespace TeleVault
             var data = await ParseUrl(channelUsername);
             return await GetAllMediasByChanalName(data.username, type, filter, direction, checkPerRound);
         }
+
         /// <summary>
         /// Retrieves all media information from a Telegram channel, chat, or user based on the specified username, media type, filter, and message direction. It fetches messages in batches to avoid hitting Telegram's flood limits.
         /// </summary>
@@ -138,6 +140,7 @@ namespace TeleVault
 
             return allMedias;
         }
+
         //------------------------------------------------
         //================================================ URL Parsing Method ================================
         /// <summary>
@@ -147,7 +150,7 @@ namespace TeleVault
         /// <returns>A tuple containing the username, message ID, and download flag</returns>
         /// <exception cref="ArgumentException"></exception>
         /// <exception cref="FormatException"></exception>
-        public static async Task<(string username, int messageId, bool onlyDownloadFirst)> ParseUrl(string url)
+        public async Task<(string username, int messageId, bool onlyDownloadFirst)> ParseUrl(string url)
         {
             try
             {
@@ -179,38 +182,63 @@ namespace TeleVault
                 return (string.Empty, 0, false);
             }
         }
+
         //-------------------------------------------------
+
         #region =============================================== Download Media Methods ================================
+
         //========================================================================
         // متدهای سربارگذاری شده (Overloads)
         //========================================================================
 
         public void AddToQueue(TeleMediaInfo media, int priority = 1, bool autoStart = false)
             => AddToQueue_Core(new List<TeleMediaInfo> { media }, priority, autoStart);
+
         public void AddToQueue(List<TeleMediaInfo> media, int priority = 1, bool autoStart = false)
             => AddToQueue_Core(media, priority, autoStart);
+
         public void AddToQueue(params TeleMediaInfo[] media)
             => AddToQueue_Core(media.ToList(), 1, false);
+
         public void AddToQueue(TeleMediaInfo[] media, int priority = 1, bool autoStart = false)
             => AddToQueue_Core(media.ToList(), priority, autoStart);
+
         public void AddToQueue(TeleMediaInfo media, eDownloadPriority priority, bool autoStart = false)
             => AddToQueue_Core(new List<TeleMediaInfo> { media }, (int)priority, autoStart);
+
         public void AddToQueue(TeleMediaInfo[] media, eDownloadPriority priority, bool autoStart = false)
             => AddToQueue_Core(media.ToList(), (int)priority, autoStart);
+
         public void SetMaxConcurrentDownloads(int count)
         {
             _downloadSemaphore.Dispose();
             _downloadSemaphore = new SemaphoreSlim(count);
         }
+
         public void SetDownloadChunkSize(eDownloadChunkSize size)
           => _currentChunkSize = size;
 
+        public void SetDefaultDownloadGlobalSettings()
+        {
+            globalDownloadPolicy ??= new DownloadGlobalSettingsDTO();
 
-        //========================================================================
-        // هسته مرکزی (Core Logic)
-        //========================================================================
+            globalDownloadPolicy.MaxThreads = 8;
 
-        #endregion
+            globalDownloadPolicy.WaitForNetwork = true;
 
+            globalDownloadPolicy.WaitForNetworkTimeout_sec = 30;
+
+            globalDownloadPolicy.WaitForNetworkRetryCount = 5;
+
+            globalDownloadPolicy.RetryOnError = true;
+
+            globalDownloadPolicy.MaxRetry = 3;
+
+            globalDownloadPolicy.RetryDelay_sec = 5;
+
+            globalDownloadPolicy.MinimizeDiskIO = false;
+        }
+
+        #endregion =============================================== Download Media Methods ================================
     }
 }
