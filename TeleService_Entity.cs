@@ -1,10 +1,15 @@
-﻿using System.Data;
+﻿using NeraXTools;
+using NeraXTools.LogManager;
+using Newtonsoft.Json.Linq;
+using System.Data;
+using System.IO;
 using TL;
 
 namespace TeleVault
 {
     public sealed class TeleMediaInfo
     {
+        public string FileName { get; set; }
         public long Id { get; set; }
         public long AccessHash { get; set; }
         public byte[] FileReference { get; set; }
@@ -17,13 +22,153 @@ namespace TeleVault
     public class TeleDownloadTask
     {
         public TeleMediaInfo Media { get; init; }
+        public string FileName { get; set; } = string.Empty;  // This should be set file Name In use time of download.
+
+        public string FileExtension { get; set; } = string.Empty; // This should be set file extension In use time of download.
+
+        public string FullPath
+        {
+            get
+            {
+                if (_destinationPath != null && FileName != null && FileExtension != null)
+                {
+                    return Path.Combine(_destinationPath, $"{FileName}.{FileExtension}");
+                }
+                return null;
+            }
+        }
+
+        private string _fullTempFilePath = null; // This is the full path to the temporary file used during download. It should be set to a valid path that matches the FileName and set app Extension.
+
+        public string FullTempFilePath
+        {
+            get
+            {
+                try
+                {
+                    if (_fullTempFilePath != null && Path.GetDirectoryName(_fullTempFilePath).Trim() == FileName)
+                    {
+                        return _fullTempFilePath;
+                    }
+                    throw new Exception("Temp file path is not set or does not match the file name.");
+                }
+                catch (Exception ex)
+                {
+                    //Logger.log(ex.ToString(), eLogType.Error, eLogRecordMode.UI);
+                    return null;
+                }
+            }
+            set
+            {
+                try
+                {
+                    if (value != null && Path.GetDirectoryName(value).Trim() == FileName)
+                    {
+                        _fullTempFilePath = value;
+                    }
+                    else
+                    {
+                        throw new Exception("Temp file path is not set or does not match the file name.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.log(ex.ToString(), eLogType.Error, eLogRecordMode.UI);
+                }
+            }
+        }
+
+        private string _destinationPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "TeleVault");
+
+        public string DestinationPath
+        {
+            get
+            {
+                if (_destinationPath != null)
+                {
+                    if (!Directory.Exists(_destinationPath)) // TODO: Must be replaced with internal NeraXTools utility  // TODO : باید با ابزار داخلی نیراکس تولز رپلیس شود
+                    {
+                        try
+                        {
+                            var r = FolderOps.CreateFolder(_destinationPath);
+                            if (r != null && r.Success)
+                                return _destinationPath;
+                            else throw new Exception("Failed to create destination folder");
+                        }
+                        catch { return null; }
+                    }
+                    return _destinationPath;
+                }
+                return null;
+            }
+            set
+            {
+                if (value != null)
+                {
+                    if (!Directory.Exists(value)) // TODO: Must be replaced with internal NeraXTools utility  // TODO : باید با ابزار داخلی نیراکس تولز رپلیس شود
+                    {
+                        try
+                        {
+                            var r = FolderOps.CreateFolder(value);
+                            if (r != null && r.Success)
+                                _destinationPath = value;
+                        }
+                        catch { }
+                    }
+                    else
+                        _destinationPath = value;
+                }
+            }
+        }
+
+        private string _tempPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NeraX", "TeleVault", "Temp");
+
+        public string TempPath
+        {
+            get
+            {
+                if (_tempPath != null)
+                {
+                    if (!Directory.Exists(_tempPath)) // TODO: Must be replaced with internal NeraXTools utility  // TODO : باید با ابزار داخلی نیراکس تولز رپلیس شود
+                    {
+                        try
+                        {
+                            var r = FolderOps.CreateFolder(_tempPath);
+                            if (r != null && r.Success)
+                                return _tempPath;
+                            else throw new Exception("Failed to create temp folder");
+                        }
+                        catch { return null; }
+                    }
+                    return _tempPath;
+                }
+                return null;
+            }
+            set
+            {
+                if (value != null)
+                {
+                    if (!Directory.Exists(value)) // TODO: Must be replaced with internal NeraXTools utility  // TODO : باید با ابزار داخلی نیراکس تولز رپلیس شود
+                    {
+                        try
+                        {
+                            var r = FolderOps.CreateFolder(value);
+                            if (r != null && r.Success)
+                                _tempPath = value;
+                        }
+                        catch { }
+                    }
+                    else
+                        _tempPath = value;
+                }
+            }
+        }
 
         public eTeleMediaDownloadStatus Status { get; set; } = eTeleMediaDownloadStatus.NotStarted;
 
         public long DownloadedBytes { get; set; }
         public string DownloadProgress => Media.Size > 0 ? $"{(DownloadedBytes * 100.0 / Media.Size):F2}%" : "0%";
-        public string DestinationPath { get; init; } = string.Empty;
-        public string TempFilePath { get; init; } = string.Empty;
+
         public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
         private List<TeleDownloadChunk> _chunks = new();
 

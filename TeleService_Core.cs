@@ -9,19 +9,11 @@ namespace TeleVault
 {
     public sealed partial class TeleService
     {
-        private Client client;
-        private DownloadGlobalSettingsDTO globalDownloadPolicy;
-
         //============================================ Global Setting For Download
         private PriorityQueue<TeleMediaInfo, int> downloadQueue;
 
         private object? queueLock;
 
-        private int _maxMultiThreadedDownloads = 8; // تعداد دانلودهای همزمان
-        private int globalMaxRetryCount = 3; // تعداد دفعات تلاش مجدد
-        private int globalDelayBetweenRetriesMs = 5000; // ۵ ثانیه صبر بین هر تلاش
-        private eDownloadChunkSize _currentChunkSize = eDownloadChunkSize.MB_1; // Default chunk size for downloads 1 MB
-        private string DownloadDirectory { get; set; } = "Downloads";
         private eTeleMediaDownloadStatus GlobalState { get; set; } = eTeleMediaDownloadStatus.NotStarted;
 
         //========================================Initialization ================================
@@ -40,7 +32,7 @@ namespace TeleVault
                 foreach (var item in media)
                     downloadQueue.Enqueue(item, priority);
 
-            if (autoStart && GlobalState != eTeleMediaDownloadStatus.InProgress)
+            if (autoStart)
                 throw null;
             //_ = ProcessQueue_Core();
         }
@@ -48,33 +40,38 @@ namespace TeleVault
         private async Task InitializeChunks(TeleDownloadTask task)
         {
             if (task.Chunks.Any()) return;
-            if (globalDownloadPolicy == null)
-                globalDownloadPolicy = new DownloadGlobalSettingsDTO();
-            if (task.TempFilePath == null)
-                task.TempFilePath = Path.Combine(GlobalTempPath, $"{task.Media.Id}_{Guid.NewGuid()}.tmp");
-            ApplyGlobalSetting(task, globalDownloadPolicy);
-            task.policy.UseMultiThreaded = task.Media.Size > 10 * 1024 * 1024; // اگر فایل بزرگتر از ۱۰ مگابایت بود، دانلود چند تکه‌ای فعال شود
-            long chunkSize = task.policy.UseMultiThreaded ? task.Media.Size / _maxMultiThreadedDownloads : task.Media.Size;
-            for (int i = 0; i < _maxMultiThreadedDownloads; i++)
+            if (globalDownloadSettings_In == null)
+                globalDownloadSettings_In = new DownloadGlobalSettingsDTO();
+            task.FileName = task.Media.FileName;
+            task.FileExtension = Path.GetExtension(task.Media.FileName);
+            if (task.FullTempFilePath == null) // HAck : باید چک شود که اگر کاربر خودش مسیر فایل موقت را ست کرده بود، آن را تغییر ندهیم // باید در وقت ست کردن وارپر ها یکی هم برا این بذارم
+                task.FullTempFilePath = Path.Combine(globalDownloadSettings_In.TempPath, $"{task.Media.Id}_{Guid.NewGuid()}.{globalDownloadSettings_In.tempExtension}");
+            else
+            {
+                // If the user provides a full temporary file path, discard the user-defined
+                // file name and extension. Keep only the destination directory and generate
+                // the temporary file name using the original file name and configured
+                // temporary extension.
+
+                string directory = Directory.Exists(task.FullTempFilePath)
+                    ? task.FullTempFilePath
+                    : Path.GetDirectoryName(task.FullTempFilePath) ?? globalDownloadSettings_In.TempPath;
+
+                task.FullTempFilePath = Path.Combine(
+                    directory,
+                    $"{Path.GetFileNameWithoutExtension(task.FullPath)}.{globalDownloadSettings_In.tempExtension.TrimStart('.')}");
+            }
+
+            ApplyGlobalSetting(task, globalDownloadSettings_In);
+            long chunkSize = task.policy.UseMultiThreaded ? task.Media.Size / task.policy.MaxThreads : task.Media.Size;
+            for (int i = 0; i < task.policy.MaxThreads; i++)
             {
                 long start = i * chunkSize;
-                long end = (i == _maxMultiThreadedDownloads - 1) ? task.Media.Size - 1 : (start + chunkSize - 1);
+                long end = (i == task.policy.MaxThreads - 1) ? task.Media.Size - 1 : (start + chunkSize - 1);
                 task.Chunks.Add(new TeleDownloadChunk { StartOffset = start, EndOffset = end, Status = eTeleMediaDownloadStatus.NotStarted });
             }
         }
 
-        //private async Task DownloadMediaManager_Core(TeleDownloadTask task, CancellationToken ct, eDownloadOpportunity[] opportunities)
-        //{
-        //    try
-        //    {
-        //        await DownloadMedia_Core(task, ct, opportunities);
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        task.Status = eTeleMediaDownloadStatus.Failed;
-        //        // Log the exception or handle it as needed
-        //    }
-        //}
         private async Task DownloadMedia_Core(TeleDownloadTask task, CancellationToken ct)
         {
             await _downloadSemaphore.WaitAsync(ct);
@@ -149,11 +146,11 @@ namespace TeleVault
             if (chunk.Status == eTeleMediaDownloadStatus.Completed || task.Status == eTeleMediaDownloadStatus.Completed) return;
             task.Status = chunk.Status = eTeleMediaDownloadStatus.InProgress;
             long currentOffset = chunk.StartOffset + chunk.DownloadedBytes;
-            using (var fs = new FileStream(task.TempFilePath, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite))
+            using (var fs = new FileStream(task.FullTempFilePath, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite))
             {
                 while (currentOffset <= chunk.EndOffset)
                 {
-                    int limit = GetLimitInBytes();
+                    int limit = globalDownloadSettings_In.GetCurrentChunkSizeValue;
                     if (currentOffset + limit > chunk.EndOffset)
                         limit = (int)(chunk.EndOffset - currentOffset + 1);
                     var result = await client.Upload_GetFile(task.Media.Location, currentOffset, limit);
@@ -175,8 +172,6 @@ namespace TeleVault
             chunk.Status = eTeleMediaDownloadStatus.Completed;
         }
 
-        private int GetLimitInBytes() => (int)_currentChunkSize * 1024 * 128;
-
         //=================================================== Internal Methods ==========================================
         /// <summary>
         /// Extracts media information from a Telegram message, returning a TeleMediaInfo object containing details about the media, such as ID, access hash, file reference, size, data center ID, media type, and location.
@@ -195,6 +190,7 @@ namespace TeleVault
             {
                 resultList = new TeleMediaInfo
                 {
+                    FileName = doc.attributes.OfType<DocumentAttributeFilename>().FirstOrDefault()?.file_name + doc.id ?? "unknown",
                     Id = doc.id,
                     AccessHash = doc.access_hash,
                     FileReference = doc.file_reference,
@@ -209,6 +205,7 @@ namespace TeleVault
                 PhotoSize bestSize = photo.sizes.OfType<PhotoSize>().Last();
                 resultList = new TeleMediaInfo
                 {
+                    FileName = $"photo_{photo.id}",
                     Id = photo.id,
                     AccessHash = photo.access_hash,
                     FileReference = photo.file_reference,
@@ -299,7 +296,11 @@ namespace TeleVault
 
             if (!task.policy.MinimizeDiskIO)
                 task.policy.MinimizeDiskIO = global.MinimizeDiskIO;
-
+            //========================================
+            // Paths
+            //========================================
+            task.TempPath = task.TempPath ?? global.TempPath;
+            task.DestinationPath = task.DestinationPath ?? global.DestinationPath;
             //========================================
             // Runtime State
             // DO NOT TOUCH

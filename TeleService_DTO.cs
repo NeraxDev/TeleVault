@@ -1,5 +1,6 @@
-﻿using System.IO;
-using NeraXTools;
+﻿using NeraXTools;
+using Newtonsoft.Json.Linq;
+using System.IO;
 
 namespace TeleVault
 {
@@ -17,45 +18,119 @@ namespace TeleVault
         public int RetryDelay_sec { get; set; } = 5;
         public bool MinimizeDiskIO { get; set; } = false;
 
-        private string TempPath { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NeraX", "TeleVault", "Temp");
-        private string _destinationPath { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "TeleVault");
+        //----------------------------
 
-        public string DestinationPath
+        private string _tempPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NeraX", "TeleVault", "Temp");
+
+        public string TempPath
         {
-            get;
+            get
+            {
+                if (_tempPath != null)
+                {
+                    if (!Directory.Exists(_tempPath)) // TODO: Must be replaced with internal NeraXTools utility  // TODO : باید با ابزار داخلی نیراکس تولز رپلیس شود
+                    {
+                        try
+                        {
+                            var r = FolderOps.CreateFolder(_tempPath);
+                            if (r != null && r.Success)
+                                return _tempPath;
+                            else throw new Exception("Failed to create temp folder");
+                        }
+                        catch { return null; }
+                    }
+                    return _tempPath;
+                }
+                return null;
+            }
             set
             {
-                if (_destinationPath != null)
+                if (value != null)
                 {
                     if (!Directory.Exists(value)) // TODO: Must be replaced with internal NeraXTools utility  // TODO : باید با ابزار داخلی نیراکس تولز رپلیس شود
                     {
                         try
                         {
-                            FolderOps.CreateFolder(value);
+                            var r = FolderOps.CreateFolder(value);
+                            if (r != null && r.Success)
+                                _tempPath = value;
                         }
-                        catch
-                        {
-                            _destinationPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "TeleVault");
-                            return;
-                        }
+                        catch { }
                     }
-                    _destinationPath = value;
+                    else
+                        _tempPath = value;
                 }
             }
         }
 
-        private SemaphoreSlim _downloadSemaphore { get; set; } = new SemaphoreSlim(3);
+        private string _destinationPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "TeleVault");
 
-        public int DownloadSemaphore
+        public string DestinationPath
         {
-            get;
+            get
+            {
+                if (_destinationPath != null)
+                {
+                    if (!Directory.Exists(_destinationPath)) // TODO: Must be replaced with internal NeraXTools utility  // TODO : باید با ابزار داخلی نیراکس تولز رپلیس شود
+                    {
+                        try
+                        {
+                            var r = FolderOps.CreateFolder(_destinationPath);
+                            if (r != null && r.Success)
+                                return _destinationPath;
+                            else throw new Exception("Failed to create destination folder");
+                        }
+                        catch { return null; }
+                    }
+                    return _destinationPath;
+                }
+                return null;
+            }
             set
             {
-                if (value > 0)
-                    _downloadSemaphore = new SemaphoreSlim(value);
-                else
-                    _downloadSemaphore = new SemaphoreSlim(1);
+                if (value != null)
+                {
+                    if (!Directory.Exists(value)) // TODO: Must be replaced with internal NeraXTools utility  // TODO : باید با ابزار داخلی نیراکس تولز رپلیس شود
+                    {
+                        try
+                        {
+                            var r = FolderOps.CreateFolder(value);
+                            if (r != null && r.Success)
+                                _destinationPath = value;
+                        }
+                        catch { }
+                    }
+                    else
+                        _destinationPath = value;
+                }
             }
         }
+
+        private SemaphoreSlim _downloadSemaphore = new SemaphoreSlim(3);
+
+        public SemaphoreSlim DownloadSemaphore
+        {
+            get => _downloadSemaphore;
+            set
+            {
+                if (value != null && value.CurrentCount > 0)
+                    _downloadSemaphore = value;
+            }
+        }
+
+        public eDownloadChunkSize SetCurrentChunkSize
+        {
+            set
+            {
+                GetCurrentChunkSizeValue = (int)value * 1024 * 128;
+            }
+        }
+
+        public int GetCurrentChunkSizeValue { get; private set; } = (int)eDownloadChunkSize.MB_1 * 1024 * 128; // Default chunk size for downloads 1 MB
+
+        /// <summary>
+        /// without dot, for example: "nxtem" or "tempfile"
+        /// </summary>
+        public string tempExtension { get; } = "nxtem"; // Default file extension for downloaded files
     }
 }

@@ -27,7 +27,7 @@ namespace TeleVault
         /// <returns>A list of media information</returns>
         public async Task<List<TeleMediaInfo>> GetMediasByLink(string url, eTelePerrType type)
         {
-            var data = await ParseUrl(url);
+            var data = await TeleParseUrl(url);
             return await GetMediasByMsgId(data.username, data.messageId, type, data.onlyDownloadFirst);
         }
 
@@ -92,7 +92,7 @@ namespace TeleVault
         /// <returns>A list of all media information</returns>
         public async Task<List<TeleMediaInfo>> GetAllMediasByLink(string channelUsername, eTelePerrType type, eTeleMediaFilter filter = eTeleMediaFilter.All, eMessageDirection direction = eMessageDirection.NewestToOldest, int checkPerRound = 90)
         {
-            var data = await ParseUrl(channelUsername);
+            var data = await TeleParseUrl(channelUsername);
             return await GetAllMediasByChanalName(data.username, type, filter, direction, checkPerRound);
         }
 
@@ -141,7 +141,6 @@ namespace TeleVault
             return allMedias;
         }
 
-        //------------------------------------------------
         //================================================ URL Parsing Method ================================
         /// <summary>
         /// Parses a Telegram message URL and extracts the username, message ID, and whether to only download the first media.
@@ -150,7 +149,7 @@ namespace TeleVault
         /// <returns>A tuple containing the username, message ID, and download flag</returns>
         /// <exception cref="ArgumentException"></exception>
         /// <exception cref="FormatException"></exception>
-        public async Task<(string username, int messageId, bool onlyDownloadFirst)> ParseUrl(string url)
+        public async Task<(string username, int messageId, bool onlyDownloadFirst)> TeleParseUrl(string url)
         {
             try
             {
@@ -220,23 +219,23 @@ namespace TeleVault
 
         public void SetDefaultDownloadGlobalSettings()
         {
-            globalDownloadPolicy ??= new DownloadGlobalSettingsDTO();
+            globalDownloadSettings_In ??= new DownloadGlobalSettingsDTO();
 
-            globalDownloadPolicy.MaxThreads = 8;
+            globalDownloadSettings_In.MaxThreads = 8;
 
-            globalDownloadPolicy.WaitForNetwork = true;
+            globalDownloadSettings_In.WaitForNetwork = true;
 
-            globalDownloadPolicy.WaitForNetworkTimeout_sec = 30;
+            globalDownloadSettings_In.WaitForNetworkTimeout_sec = 30;
 
-            globalDownloadPolicy.WaitForNetworkRetryCount = 5;
+            globalDownloadSettings_In.WaitForNetworkRetryCount = 5;
 
-            globalDownloadPolicy.RetryOnError = true;
+            globalDownloadSettings_In.RetryOnError = true;
 
-            globalDownloadPolicy.MaxRetry = 3;
+            globalDownloadSettings_In.MaxRetry = 3;
 
-            globalDownloadPolicy.RetryDelay_sec = 5;
+            globalDownloadSettings_In.RetryDelay_sec = 5;
 
-            globalDownloadPolicy.MinimizeDiskIO = false;
+            globalDownloadSettings_In.MinimizeDiskIO = false;
         }
 
         #endregion =============================================== Download Media Methods ================================
