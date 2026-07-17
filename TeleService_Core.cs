@@ -1,4 +1,5 @@
 ﻿using NeraXTools.LogManager;
+using NeraXTools.TaskManager;
 using System.IO;
 using System.Net;
 using System.Windows;
@@ -14,7 +15,7 @@ namespace TeleVault
 
         private object? queueLock;
 
-        private eTeleMediaDownloadStatus GlobalState { get; set; } = eTeleMediaDownloadStatus.NotStarted;
+        private eTeleMediaDownloadStatus GlobalDownloadState { get; set; } = eTeleMediaDownloadStatus.NotStarted; //
 
         //========================================Initialization ================================
         /// <summary>
@@ -31,10 +32,11 @@ namespace TeleVault
             lock (queueLock)
                 foreach (var item in media)
                     downloadQueue.Enqueue(item, priority);
-
-            if (autoStart)
-                throw null;
-            //_ = ProcessQueue_Core();
+            if (autoStart && GlobalDownloadState != eTeleMediaDownloadStatus.InProgress) // Check if the download is already in progress to avoid starting it again
+            {
+                GlobalDownloadState = eTeleMediaDownloadStatus.InProgress;
+                //_ = ProcessQueue_Core(); // Start processing the queue asynchronously without awaiting it
+            }
         }
 
         private async Task InitializeChunks(TeleDownloadTask task)
@@ -74,101 +76,160 @@ namespace TeleVault
 
         private async Task DownloadMedia_Core(TeleDownloadTask task, CancellationToken ct)
         {
-            await _downloadSemaphore.WaitAsync(ct);
-            do
+            try
             {
-                while (!await IsInternetConnected(10, ct))
-                    if (task.policy.WaitForNetwork && task.policy.currentRetryCountForNetwork < task.policy.waitForNetworkRetryCount)
+                await globalDownloadSettings_In.GetDownloadSemaphore.WaitAsync(ct);
+                int curentErrorRetryCount = 0;
+                do
+                {
+                    if (task.Status == eTeleMediaDownloadStatus.Error)
                     {
-                        task.Status = eTeleMediaDownloadStatus.Watching;
-                        task.policy.currentRetryCountForNetwork++;
-                        await Task.Delay(task.policy.RetryDelay_sec * 1000, ct);
+                        if (curentErrorRetryCount >= task.policy.MaxRetry)
+                            break;
+                        curentErrorRetryCount++;
                     }
-                    else
-                    {
-                        if (task.Status == eTeleMediaDownloadStatus.InProgress && task.DownloadedBytes > 10)
-                            task.Status = eTeleMediaDownloadStatus.Paused;
+                    while (!await IsInternetConnected(10, ct))
+                        if (task.policy.WaitForNetwork && task.policy.currentRetryCountForNetwork < task.policy.waitForNetworkRetryCount)
+                        {
+                            task.Status = eTeleMediaDownloadStatus.Watching;
+                            task.policy.currentRetryCountForNetwork++;
+                            await Task.Delay(task.policy.RetryDelay_sec * 1000, ct);
+                        }
                         else
-                            task.Status = eTeleMediaDownloadStatus.Failed;
-                        return;
-                    }
+                        {
+                            if (task.Status == eTeleMediaDownloadStatus.InProgress && task.DownloadedBytes > 10)
+                            {
+                                task.Status = eTeleMediaDownloadStatus.Paused;
+                                task.Chunks.Select(c => c.Status = eTeleMediaDownloadStatus.Paused).ToList();
+                            }
+                            else
+                            {
+                                task.Status = eTeleMediaDownloadStatus.Failed;
+                                task.Chunks.Select(c => c.Status = eTeleMediaDownloadStatus.Failed).ToList();
+                            }
+                            return;
+                        }
 
-                try
-                {
-                    await InitializeChunks(task);
-                    task.Status = eTeleMediaDownloadStatus.InProgress;
-
-                    var chunkTasks = task.Chunks.Select(chunk =>
-                        DownloadSingleChunkAsync(task, chunk, ct)
-                    );
-
-                    await Task.WhenAll(chunkTasks);
-
-                    if (task.Chunks.All(c => c.Status == eTeleMediaDownloadStatus.Completed))
+                    try
                     {
-                        File.Move(task.TempFilePath, task.DestinationPath); // TODO : باید با ابزار های ایسنک نیراکس تول جایگزین شود
-                        task.Status = eTeleMediaDownloadStatus.Completed;
+                        await InitializeChunks(task);
+                        task.Status = eTeleMediaDownloadStatus.InProgress;
+
+                        var chunkTasks = task.Chunks.Select(chunk =>
+                            DownloadSingleChunkAsync(task, chunk, ct)
+                        );
+
+                        await Task.WhenAll(chunkTasks);
+
+                        if (task.Chunks.All(c => c.Status == eTeleMediaDownloadStatus.Completed))
+                        {
+                            _ = TaskSchedulerEngine.RunSyncAsAsync(() => File.Move(task.FullTempFilePath, task.FullPath), ePriorityLevel.MidLevel, ct); // TODO : باید با ابزار های ایسنک نیراکس تول جایگزین شود
+                            task.Status = eTeleMediaDownloadStatus.Finalizing;
+                            task.DownloadedBytes = 0;
+                            task.isOnMoving = true;
+                            FileInfo fileInfo = new FileInfo(task.FullPath);
+                            (int, long) lastRoundAndRoundSize = (0, 0);
+                            int roundCount = 0;
+                            while (task.DownloadedBytes <= task.Media.Size && task.isOnMoving)
+                            {
+                                roundCount++;
+                                task.DownloadedBytes = fileInfo.Length;
+                                fileInfo.Refresh();
+                                await Task.Delay(500);
+                                //
+                                if (lastRoundAndRoundSize.Item1 + 20 <= roundCount && lastRoundAndRoundSize.Item2 >= task.DownloadedBytes)
+                                    throw new Exception("File move operation seems to be stuck.");
+                                else
+                                    lastRoundAndRoundSize = (roundCount, task.DownloadedBytes);
+                            }
+                            task.Status = eTeleMediaDownloadStatus.Completed;
+                        }
+                        else
+                            throw new Exception("Not all chunks completed successfully.");
                     }
-                    else
-                        throw new Exception("Not all chunks completed successfully.");
+                    catch (RpcException ex)
+                    {
+                        // این یعنی تلگرام جواب داده، ولی یک مشکلی هست (مثلا فایل پیدا نشد، یا لیمیت خوردی)
+                        // این‌ها «قطعی اینترنت» نیستند!
+                        // مستقیم ارور ست میکنیم اینجا چون ارور واقعا از سمت تلگرام هست و نه اینترنت
+                        task.Status = eTeleMediaDownloadStatus.Error;
+                    }
+                    catch (System.IO.IOException ex)
+                    {
+                        // این معمولاً مربوط به قطع شدنِ سوکت است (Network Issue)
+                        task.Status = eTeleMediaDownloadStatus.Error;
+                    }
+                    catch (System.Net.Sockets.SocketException)
+                    {
+                        int rollbackSize = globalDownloadSettings_In.GetRollbackSize();
+                        foreach (var chunk in task.Chunks)
+                        {
+                            if (chunk.Status == eTeleMediaDownloadStatus.Error)
+                            {
+                                chunk.DownloadedBytes = Math.Max(0, chunk.DownloadedBytes - rollbackSize);
+                            }
+                        }
+                    }
+                    catch (Exception ex) when (ex.Message.Contains("No such host") || ex.Message.Contains("Name resolution failure"))
+                    {
+                        // DNS مشکل دارد یا اینترنت کاملاً قطع است
+                    }
+                    catch (Exception ex)
+                    {
+                        // این یک ارور ناشناخته است، ممکن است از تلگرام باشد یا از اینترنت
+                        task.Status = eTeleMediaDownloadStatus.Error;
+                    }
+                    finally
+                    {
+                        if (task.Status == eTeleMediaDownloadStatus.Paused || task.Status == eTeleMediaDownloadStatus.Failed || task.Status == eTeleMediaDownloadStatus.Completed)
+                            globalDownloadSettings_In.GetDownloadSemaphore.Release();
+                        else if (task.Status == eTeleMediaDownloadStatus.Error)
+                            await Task.Delay(task.policy.RetryDelay_sec * 1000, ct);
+                    }
                 }
-                catch (RpcException ex)
-                {
-                    // این یعنی تلگرام جواب داده، ولی یک مشکلی هست (مثلا فایل پیدا نشد، یا لیمیت خوردی)
-                    // این‌ها «قطعی اینترنت» نیستند!
-                    // مستقیم ارور ست میکنیم اینجا چون ارور واقعا از سمت تلگرام هست و نه اینترنت
-                    task.Status = eTeleMediaDownloadStatus.Error;
-                }
-                catch (System.IO.IOException ex)
-                {
-                    // این معمولاً مربوط به قطع شدنِ سوکت است (Network Issue)
-                    task.Status = eTeleMediaDownloadStatus.Error;
-                }
-                catch (System.Net.Sockets.SocketException)
-                {
-                    // این قطعاً قطعی اینترنت یا فیلترینگ است
-                }
-                catch (Exception ex) when (ex.Message.Contains("No such host") || ex.Message.Contains("Name resolution failure"))
-                {
-                    // DNS مشکل دارد یا اینترنت کاملاً قطع است
-                }
-                finally
-                {
-                    if (task.Status == eTeleMediaDownloadStatus.Paused || task.Status == eTeleMediaDownloadStatus.Failed || task.Status == eTeleMediaDownloadStatus.Completed)
-                        _downloadSemaphore.Release();
-                }
+                while (task.policy.RetryOnError && task.Status == eTeleMediaDownloadStatus.Error);
             }
-            while (task.policy.RetryOnError && task.Status == eTeleMediaDownloadStatus.Error);
+            catch (Exception ex)
+            {
+                task.Status = eTeleMediaDownloadStatus.Failed;
+                task.Chunks.Select(c => c.Status = eTeleMediaDownloadStatus.Failed).ToList();
+                // TODO: Must be replaced with internal NeraXTools utility  // TODO : باید با ابزار داخلی نیراکس تولز رپلیس شود
+            }
         }
 
         private async Task DownloadSingleChunkAsync(TeleDownloadTask task, TeleDownloadChunk chunk, CancellationToken ct)
         {
-            if (chunk.Status == eTeleMediaDownloadStatus.Completed || task.Status == eTeleMediaDownloadStatus.Completed) return;
+            if (chunk.Status == eTeleMediaDownloadStatus.Completed || task.Status == eTeleMediaDownloadStatus.Completed) return; // If the chunk is already completed or the task is completed, skip downloading this chunk
             task.Status = chunk.Status = eTeleMediaDownloadStatus.InProgress;
             long currentOffset = chunk.StartOffset + chunk.DownloadedBytes;
-            using (var fs = new FileStream(task.FullTempFilePath, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite))
+            try
             {
-                while (currentOffset <= chunk.EndOffset)
+                using (var fs = new FileStream(task.FullTempFilePath, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite))
                 {
-                    int limit = globalDownloadSettings_In.GetCurrentChunkSizeValue;
-                    if (currentOffset + limit > chunk.EndOffset)
-                        limit = (int)(chunk.EndOffset - currentOffset + 1);
-                    var result = await client.Upload_GetFile(task.Media.Location, currentOffset, limit);
-
-                    if (result is Upload_File fileResult)
+                    while (currentOffset <= chunk.EndOffset && chunk.Status != eTeleMediaDownloadStatus.Finalizing && chunk.Status != eTeleMediaDownloadStatus.Paused && !ct.IsCancellationRequested)
                     {
-                        lock (fs)
-                        {
-                            fs.Position = currentOffset;
-                            fs.Write(fileResult.bytes, 0, fileResult.bytes.Length);
-                        }
+                        int limit = globalDownloadSettings_In.GetCurrentChunkSizeValue;
+                        if (currentOffset + limit > chunk.EndOffset)
+                            limit = (int)(chunk.EndOffset - currentOffset + 1);
+                        var result = await client.Upload_GetFile(task.Media.Location, currentOffset, limit);
 
-                        currentOffset += fileResult.bytes.Length;
-                        chunk.DownloadedBytes += fileResult.bytes.Length;
-                        task.DownloadedBytes = task.Chunks.Sum(c => c.DownloadedBytes);
+                        if (result is Upload_File fileResult)
+                        {
+                            lock (fs)
+                            {
+                                fs.Position = currentOffset;
+                                fs.Write(fileResult.bytes, 0, fileResult.bytes.Length);
+                            }
+
+                            currentOffset += fileResult.bytes.Length;
+                            chunk.DownloadedBytes += fileResult.bytes.Length;
+                            task.DownloadedBytes = task.Chunks.Sum(c => c.DownloadedBytes);
+                        }
                     }
                 }
             }
+            finally { chunk.Status = eTeleMediaDownloadStatus.Error; } // if an exception occurs, mark the chunk as Error. This will allow the retry mechanism to handle it appropriately.
+
             chunk.Status = eTeleMediaDownloadStatus.Completed;
         }
 
@@ -261,6 +322,8 @@ namespace TeleVault
             // اگر کاربر مقدار نداده باشد
             if (!task.policy.UseMultiThreaded)
                 task.policy.UseMultiThreaded = task.Media.Size > 10 * 1024 * 1024;
+
+            task.isOnMoving = false;
 
             //========================================
             // Network

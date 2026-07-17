@@ -108,14 +108,16 @@ namespace TeleVault
 
         private SemaphoreSlim _downloadSemaphore = new SemaphoreSlim(3);
 
-        public SemaphoreSlim DownloadSemaphore
+        internal SemaphoreSlim GetDownloadSemaphore { get => _downloadSemaphore; }
+
+        internal void SetDownloadSemaphore(int value)
         {
-            get => _downloadSemaphore;
-            set
+            if (value > 0)
             {
-                if (value != null && value.CurrentCount > 0)
-                    _downloadSemaphore = value;
+                GetDownloadSemaphore.Dispose();
+                _downloadSemaphore = new SemaphoreSlim(value);
             }
+            else throw new ArgumentOutOfRangeException(nameof(value));
         }
 
         public eDownloadChunkSize SetCurrentChunkSize
@@ -132,5 +134,15 @@ namespace TeleVault
         /// without dot, for example: "nxtem" or "tempfile"
         /// </summary>
         public string tempExtension { get; } = "nxtem"; // Default file extension for downloaded files
+
+        private int _rollbackFactor = 3;
+
+        public int RollbackFactor
+        {
+            get => _rollbackFactor;
+            set => _rollbackFactor = Math.Clamp(value, 1, 10);
+        }
+
+        public int GetRollbackSize() => GetCurrentChunkSizeValue * RollbackFactor;
     }
 }

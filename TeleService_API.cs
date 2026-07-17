@@ -209,13 +209,10 @@ namespace TeleVault
             => AddToQueue_Core(media.ToList(), (int)priority, autoStart);
 
         public void SetMaxConcurrentDownloads(int count)
-        {
-            _downloadSemaphore.Dispose();
-            _downloadSemaphore = new SemaphoreSlim(count);
-        }
+           => globalDownloadSettings_In.SetDownloadSemaphore(count);
 
         public void SetDownloadChunkSize(eDownloadChunkSize size)
-          => _currentChunkSize = size;
+          => globalDownloadSettings_In.SetCurrentChunkSize = size;
 
         public void SetDefaultDownloadGlobalSettings()
         {

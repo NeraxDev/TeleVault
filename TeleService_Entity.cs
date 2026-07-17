@@ -165,8 +165,8 @@ namespace TeleVault
         }
 
         public eTeleMediaDownloadStatus Status { get; set; } = eTeleMediaDownloadStatus.NotStarted;
-
-        public long DownloadedBytes { get; set; }
+        public bool isOnMoving { get; set; } = false;
+        public long DownloadedBytes { get; set; } // این دو کابرد داره یکی زمان دانلود و حالت دوم زمانی که فایل دارد انتقال پیدا میکنه
         public string DownloadProgress => Media.Size > 0 ? $"{(DownloadedBytes * 100.0 / Media.Size):F2}%" : "0%";
 
         public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
