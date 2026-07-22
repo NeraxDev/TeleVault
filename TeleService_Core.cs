@@ -14,7 +14,6 @@ namespace TeleVault
         private PriorityQueue<TeleMediaInfo, int> downloadQueue;
 
         private object? queueLock;
-
         private eTeleMediaDownloadStatus GlobalDownloadState { get; set; } = eTeleMediaDownloadStatus.NotStarted; //
 
         //========================================Initialization ================================
@@ -39,6 +38,12 @@ namespace TeleVault
             }
         }
 
+        /// <summary>
+        /// English: Initializes the download chunks for a given TeleDownloadTask based on the media size and download policy, creating chunk objects with start and end offsets for multi-threaded downloading.
+        /// Persian: بخش‌های دانلود را برای یک TeleDownloadTask مشخص بر اساس اندازه رسانه و سیاست دانلود مقداردهی اولیه می‌کند و اشیاء chunk با آفست‌های شروع و پایان برای دانلود چند رشته‌ای ایجاد می‌کند.
+        /// </summary>
+        /// <param name="task">The TeleDownloadTask for which to initialize chunks.</param>
+        /// <returns>A task representing the asynchronous operation.</returns>
         private async Task InitializeChunks(TeleDownloadTask task)
         {
             if (task.Chunks.Any()) return;
@@ -74,6 +79,13 @@ namespace TeleVault
             }
         }
 
+        /// <summary>
+        /// English: Core method for downloading media in a TeleDownloadTask, handling retries, network checks, and chunked downloading. It manages the download process, including error handling, pausing, and finalizing the download.
+        /// Persian: روش هسته‌ای برای دانلود رسانه در یک TeleDownloadTask, که مدیریت بازخوانی‌ها, بررسی شبکه و دانلود با قطعات را انجام می‌دهد. این روش فرآیند دانلود را مدیریت می‌کند, از جمله مدیریت خطا, توقف و پایان‌دادن دانلود.
+        /// </summary>
+        /// <param name="task">The TeleDownloadTask to download.</param>
+        /// <param name="ct">The cancellation token.</param>
+        /// <returns>A task representing the asynchronous operation.</returns>
         private async Task DownloadMedia_Core(TeleDownloadTask task, CancellationToken ct)
         {
             try
@@ -197,6 +209,13 @@ namespace TeleVault
             }
         }
 
+        /// <summary>
+        /// English: Downloads a single chunk of media for a given TeleDownloadTask, handling the download process, writing to the temporary file, and updating the chunk's status. It checks for cancellation and handles errors appropriately.
+        /// </summary>
+        /// <param name="task">The TeleDownloadTask for which to download the chunk.</param>
+        /// <param name="chunk">The TeleDownloadChunk to download.</param>
+        /// <param name="ct">The cancellation token.</param>
+        /// <returns>A task representing the asynchronous operation.</returns>
         private async Task DownloadSingleChunkAsync(TeleDownloadTask task, TeleDownloadChunk chunk, CancellationToken ct)
         {
             if (chunk.Status == eTeleMediaDownloadStatus.Completed || task.Status == eTeleMediaDownloadStatus.Completed) return; // If the chunk is already completed or the task is completed, skip downloading this chunk
@@ -233,7 +252,7 @@ namespace TeleVault
             chunk.Status = eTeleMediaDownloadStatus.Completed;
         }
 
-        //=================================================== Internal Methods ==========================================
+        //=================================================== Helper Methods ==========================================
         /// <summary>
         /// Extracts media information from a Telegram message, returning a TeleMediaInfo object containing details about the media, such as ID, access hash, file reference, size, data center ID, media type, and location.
         /// </summary>
@@ -292,6 +311,15 @@ namespace TeleVault
             catch { return false; }
         }
 
+        /// <summary>
+        /// English: Creates a DateTime object based on the provided year, month, day, hour, and minute parameters. If any parameter is set to -1, it defaults to the current date and time for that component.
+        /// </summary>
+        /// <param name="year">The year to set, or -1 to use the current year.</param>
+        /// <param name="month">The month to set, or -1 to use the current month.</param>
+        /// <param name="day">The day to set, or -1 to use the current day.</param>
+        /// <param name="hour">The hour to set, or -1 to use the current hour.</param>
+        /// <param name="minute">The minute to set, or -1 to use the current minute.</param>
+        /// <returns>The created DateTime object.</returns>
         private DateTime CreateDateTime(int year, int month, int day, int hour, int minute)
         {
             DateTime now = DateTime.Now;
@@ -304,6 +332,12 @@ namespace TeleVault
             return new DateTime(year, month, day, hour, minute, 0);
         }
 
+        /// <summary>
+        /// English: Applies global download settings to a specific TeleDownloadTask, updating its policy and paths based on the provided DownloadGlobalSettingsDTO. It ensures that the task's settings are consistent with the global configuration.
+        /// </summary>
+        /// <param name="task">The TeleDownloadTask to which to apply the global settings.</param>
+        /// <param name="global">The DownloadGlobalSettingsDTO containing the global settings.</param>
+        /// <exception cref="ArgumentNullException"></exception>
         private void ApplyGlobalSetting(TeleDownloadTask task, DownloadGlobalSettingsDTO global)
         {
             if (task == null)

@@ -302,6 +302,29 @@ namespace TeleVault
         public int MaxRetry { get; set; }
         public int RetryDelay_sec { get; set; }
 
+        //------------------------------------------------------------------------------------
+        /// <summary> If true, the download will be skipped if the file already exists at the destination path. If false, the existing file will be overwritten.</summary>
+        public bool skipIfFileExists { get; set; }
+
+        /// <summary>If true, the existing file will be overwritten if it already exists at the destination path. If false, the download will be Maked with Another Name.</summary>
+        public bool overwriteIfFileExists { get; set; }
+
+        private bool addToRearOfQueueAfterFailur { get; set; }
+
+        //--
+        /// <summary> If true, the download will be added to the rear of the queue after a failure. If false, the download will be Failed. </summary>
+        public bool AddToRearOfQueueAfterFailure { get => FailCount >= MaxFailCount ? false : addToRearOfQueueAfterFailur ? true : false; set => addToRearOfQueueAfterFailur = value; }
+
+        private bool removeFromQueueAfterFailure { get; set; }
+
+        /// <summary> If true, the download will be removed from the queue after a failure. If false, the download will be added to the rear of the queue after a failure or the downlod will be Failed. </summary>
+        public bool RemoveFromQueueAfterFailure { get => AddToRearOfQueueAfterFailure ? false : removeFromQueueAfterFailure ? true : false; set => removeFromQueueAfterFailure = value; }
+
+        public int FailCount { get; set; }
+        public int MaxFailCount { get; set; }
+        //--
+
+        //-------------------------------------------------------------------------------------
         // تنظیماتِ حافظه/دیسک
         public bool MinimizeDiskIO { get; set; }
     }
