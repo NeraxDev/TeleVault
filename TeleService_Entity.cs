@@ -165,9 +165,9 @@ namespace TeleVault
         }
 
         public eTeleMediaDownloadStatus Status { get; set; } = eTeleMediaDownloadStatus.NotStarted;
-        public bool isOnMoving { get; set; } = false;
+        public bool isOnMoving { get; set; } = false; // برا وقتی که دانلود تموم شدده و دانلود بیت ریست شده و برا انتقال کار میکنه کاربرد داره
         public long DownloadedBytes { get; set; } // این دو کابرد داره یکی زمان دانلود و حالت دوم زمانی که فایل دارد انتقال پیدا میکنه
-        public string DownloadProgress => Media.Size > 0 ? $"{(DownloadedBytes * 100.0 / Media.Size):F2}%" : "0%";
+        public string StateProgress => Media.Size > 0 ? $"{(DownloadedBytes * 100.0 / Media.Size):F2}%" : "0%"; // اینم دو کاربرد داره
 
         public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
         private List<TeleDownloadChunk> _chunks = new();
@@ -326,6 +326,6 @@ namespace TeleVault
 
         //-------------------------------------------------------------------------------------
         // تنظیماتِ حافظه/دیسک
-        public bool MinimizeDiskIO { get; set; }
+        public bool MinimizeDiskIO { get; set; } // هنوز ست نشده باید بعدا ست شه !
     }
 }

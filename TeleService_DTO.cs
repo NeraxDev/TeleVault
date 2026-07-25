@@ -130,9 +130,7 @@ namespace TeleVault
 
         public int GetCurrentChunkSizeValue { get; private set; } = (int)eDownloadChunkSize.MB_1 * 1024 * 128; // Default chunk size for downloads 1 MB
 
-        /// <summary>
-        /// without dot, for example: "nxtem" or "tempfile"
-        /// </summary>
+        /// <summary> without dot, for example: "nxtem" or "tempfile"</summary>
         public string tempExtension { get; } = "nxtem"; // Default file extension for downloaded files
 
         private int _rollbackFactor = 3;
@@ -144,5 +142,10 @@ namespace TeleVault
         }
 
         public int GetRollbackSize() => GetCurrentChunkSizeValue * RollbackFactor;
+
+        //--
+        public bool AddToRearOfQueueAfterFailure { get; set; } = true;
+
+        public bool RemoveFromQueueAfterFailure { get; set; } = false;
     }
 }
