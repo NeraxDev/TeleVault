@@ -1,4 +1,5 @@
-﻿using NeraXTools;
+﻿using Microsoft.IdentityModel.Abstractions;
+using NeraXTools;
 using NeraXTools.LogManager;
 using Newtonsoft.Json.Linq;
 using System.Data;
@@ -6,9 +7,11 @@ using System.IO;
 using TL;
 
 // Emoji Guide : 🚨 🔂 🌵
-// هنوز پیاده سازی نشده  --> 🌵
-// هنوز در ست کننده و گلوبال دیتا نیست --> 🚨
-//  اینا برا نمایش لحظه ای کاربر هستن و نباید توی تنظیمات ذخیره بشن --> 🔂
+//🚨 = هنوز پیاده‌سازی نشده / نیاز به توجه بخصوص در بخش ست کردن مقدار از گلوبال دیتا
+//🔂 = فقط مربوط به یو ای و دیتا ثبات نداره
+//🌵 = در کور پیاده سازی نشده
+//✅ = کامل شده
+//⚠️ = نیاز به بررسی
 namespace TeleVault
 {
     public sealed class TeleMediaInfo
@@ -27,8 +30,53 @@ namespace TeleVault
     {
         public TeleMediaInfo Media { get; init; }
         public string FileName { get; set; } = string.Empty;  // This should be set file Name In use time of download.
+        public string FileExtension { get; set; } = string.Empty; // Real file extension .
 
-        public string FileExtension { get; set; } = string.Empty; // This should be set file extension In use time of download.
+        private string _tempFileName = string.Empty;
+        private string _tempFileExtension = string.Empty;
+
+        /// <summary>
+        /// with out Extemtion!
+        /// </summary>
+        public string TempFileName
+        {
+            get => _tempFileName;
+            set
+            {
+                if (!string.IsNullOrEmpty(_tempFileName))
+                {
+                    Logger.log("TempFileName is already set. It cannot be changed.", eLogType.Warning, eLogRecordMode.UI);
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    Logger.log("Null or whitespace value provided for TempFileName. It cannot be changed.", eLogType.Warning, eLogRecordMode.UI);
+                    return;
+                }
+
+                _tempFileName = value.Trim().Trim('.');
+            }
+        }
+
+        public string TempFileExtension
+        {
+            get => _tempFileExtension;
+            set
+            {
+                if (!string.IsNullOrEmpty(_tempFileExtension))
+                {
+                    Logger.log("TempFileExtension is already set. It cannot be changed.", eLogType.Warning, eLogRecordMode.UI);
+                    return;
+                }
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    Logger.log("Null or whitespace value provided for TempFileName. It cannot be changed.", eLogType.Warning, eLogRecordMode.UI);
+                    return;
+                }
+                _tempFileExtension = value.Trim().Trim('.');
+            }
+        }
 
         public string FullPath
         {
@@ -42,42 +90,24 @@ namespace TeleVault
             }
         }
 
-        private string _fullTempFilePath = null; // This is the full path to the temporary file used during download. It should be set to a valid path that matches the FileName and set app Extension.
-
         public string FullTempFilePath
         {
             get
             {
                 try
                 {
-                    if (_fullTempFilePath != null && Path.GetDirectoryName(_fullTempFilePath).Trim() == FileName)
+                    if (_tempFileName == null || _tempFileExtension == null || _tempPath == null)
                     {
-                        return _fullTempFilePath;
-                    }
-                    throw new Exception("Temp file path is not set or does not match the file name.");
-                }
-                catch (Exception ex)
-                {
-                    //Logger.log(ex.ToString(), eLogType.Error, eLogRecordMode.UI);
-                    return null;
-                }
-            }
-            set
-            {
-                try
-                {
-                    if (value != null && Path.GetDirectoryName(value).Trim() == FileName)
-                    {
-                        _fullTempFilePath = value;
+                        Logger.log("Temp file name or extension or path is not set.", eLogType.Warning, eLogRecordMode.UI);
+                        return null;
                     }
                     else
-                    {
-                        throw new Exception("Temp file path is not set or does not match the file name.");
-                    }
+                        return Path.Combine(_tempPath, $"{TempFileName}.{TempFileExtension}");
                 }
                 catch (Exception ex)
                 {
-                    Logger.log(ex.ToString(), eLogType.Error, eLogRecordMode.UI);
+                    Logger.log("Error occurred while combining temp file path. Exception:  " + ex.Message, eLogType.Warning, eLogRecordMode.UI);
+                    return null;
                 }
             }
         }
@@ -117,11 +147,13 @@ namespace TeleVault
                             if (r != null && r.Success)
                                 _destinationPath = value;
                         }
-                        catch { }
+                        catch (Exception ex) { Logger.log(ex.ToString(), eLogType.Error, eLogRecordMode.UI); }
                     }
                     else
                         _destinationPath = value;
                 }
+                else
+                    Logger.log("Invalid destination path.", eLogType.Error, eLogRecordMode.UI);  // TODO: Must be replaced with internal NeraXTools utility  // TODO : باید با ابزار داخلی نیراکس تولز رپلیس شود
             }
         }
 
@@ -174,21 +206,119 @@ namespace TeleVault
         public string StateProgress => Media.Size > 0 ? $"{(DownloadedBytes * 100.0 / Media.Size):F2}%" : "0%"; // اینم دو کاربرد داره
 
         public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
-        private List<TeleDownloadChunk> _chunks = new();
+        private readonly List<TeleDownloadChunk> _chunks = new();
 
-        public List<TeleDownloadChunk> Chunks
+        public IReadOnlyList<TeleDownloadChunk> Chunks => _chunks;
+
+        public bool AddChunk(long startOffset, long endOffset, eTeleMediaDownloadStatus status = eTeleMediaDownloadStatus.NotStarted)
         {
-            get => _chunks;
-
-            set
+            // Offset منفی
+            if (startOffset < 0)
             {
-                if (value == null || !value.Any())
-                {
-                    _chunks = new List<TeleDownloadChunk>();
-                    return;
-                }
-                _chunks = value;
+                Logger.log(
+                    "Chunk start offset cannot be negative",
+                    eLogType.Error,
+                    eLogRecordMode.UI);
+
+                return false;
             }
+
+            if (endOffset < 0)
+            {
+                Logger.log(
+                    "Chunk end offset cannot be negative",
+                    eLogType.Error,
+                    eLogRecordMode.UI);
+
+                return false;
+            }
+
+            // شروع و پایان برابر
+            if (startOffset == endOffset)
+            {
+                Logger.log(
+                    "Chunk start and end offset cannot be equal",
+                    eLogType.Error,
+                    eLogRecordMode.UI);
+
+                return false;
+            }
+
+            // شروع بعد از پایان
+            if (startOffset > endOffset)
+            {
+                Logger.log(
+                    "Chunk start offset cannot be greater than end offset",
+                    eLogType.Error,
+                    eLogRecordMode.UI);
+
+                return false;
+            }
+
+            // Start تکراری
+            if (_chunks.Any(x => x.StartOffset == startOffset))
+            {
+                Logger.log(
+                    $"Duplicate chunk start offset detected : {startOffset}",
+                    eLogType.Error,
+                    eLogRecordMode.UI);
+
+                return false;
+            }
+
+            // End تکراری
+            if (_chunks.Any(x => x.EndOffset == endOffset))
+            {
+                Logger.log(
+                    $"Duplicate chunk end offset detected : {endOffset}",
+                    eLogType.Error,
+                    eLogRecordMode.UI);
+
+                return false;
+            }
+
+            // Overlap بررسی
+            bool overlap = _chunks.Any(x =>
+                startOffset < x.EndOffset &&
+                endOffset > x.StartOffset);
+
+            if (overlap)
+            {
+                Logger.log(
+                    $"Chunk overlap detected : {startOffset}-{endOffset}",
+                    eLogType.Error,
+                    eLogRecordMode.UI);
+
+                return false;
+            }
+
+            // بررسی Enum
+            if (!Enum.IsDefined(typeof(eTeleMediaDownloadStatus), status))
+            {
+                status = eTeleMediaDownloadStatus.NotStarted;
+            }
+
+            // ساخت داخلی
+            var chunk = new TeleDownloadChunk
+            {
+                StartOffset = startOffset,
+                EndOffset = endOffset,
+                Status = status
+            };
+
+            _chunks.Add(chunk);
+
+            return true;
+        }
+
+        public void SortChunks() => _chunks.Sort((x, y) => x.StartOffset.CompareTo(y.StartOffset));
+
+        public void ClearChunks()
+        {
+            if (_chunks == null || !_chunks.Any())
+                return;
+            _chunks.Clear();
+            Logger.log($" Chunk Of Download ID  -> {Media.Id} Cleared !", eLogType.Info, eLogRecordMode.UI);
         }
 
         public DownloadPolicy policy { get; init; }
@@ -206,25 +336,25 @@ namespace TeleVault
     public class DownloadPolicy
     {
         // تنظیمات تردینگ (می‌تواند جایگزین Multi/Single شود)
-        public int MaxThreads { get; set; }
+        public int MaxThreads { get; set; } //✅
 
-        public bool UseMultiThreaded { get; set; }
+        public bool UseMultiThreaded { get; set; } //✅
 
         // تنظیماتِ خودکارسازی (Auto-Resume)
-        public bool WaitForNetwork { get; set; }
+        public bool WaitForNetwork { get; set; } //✅
 
-        public int waitForNetworkTimeout_sec { get; set; }
-        public int waitForNetworkRetryCount { get; set; }
+        public int waitForNetworkDelay_sec { get; set; }  //✅
+        public int waitForNetworkRetryCount { get; set; } //✅
 
         // --------  🔂
-        public int currentRetryCountForNetwork { get; set; } = 0; //🔂
+        public int currentRetryCountForNetwork { get; set; } = 0; //🔂 ✅
 
         //------------------------------------------------
 
         /// <summary>
         /// Enable automatic start/pause scheduling.
         /// </summary>
-        public bool UseSchedule { get; set; } // 🌵
+        public bool UseSchedule { get; set; } // 🌵 🚨
 
         /// <summary>
         /// Automatic start date and time.
@@ -257,7 +387,7 @@ namespace TeleVault
                     ? remaining
                     : TimeSpan.Zero;
             }
-        }//🔂
+        }//🔂 🌵
 
         /// <summary>
         /// Remaining time until automatic pause.
@@ -277,7 +407,7 @@ namespace TeleVault
                     ? remaining
                     : TimeSpan.Zero;
             }
-        }//🔂
+        }//🔂 🌵
 
         /// <summary>
         /// Remaining time between automatic start and automatic pause.
@@ -298,10 +428,10 @@ namespace TeleVault
                     ? duration
                     : TimeSpan.Zero;
             }
-        }//🔂
+        }//🔂 🌵
 
         //----------------------------
-        public bool RetryOnError { get; set; }
+        public bool RetryOnError { get; set; } //✅
 
         public int MaxRetry { get; set; }
         public int RetryDelay_sec { get; set; }

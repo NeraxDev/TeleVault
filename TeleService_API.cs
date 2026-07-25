@@ -222,7 +222,7 @@ namespace TeleVault
 
             globalDownloadSettings_In.WaitForNetwork = true;
 
-            globalDownloadSettings_In.WaitForNetworkTimeout_sec = 30;
+            globalDownloadSettings_In.waitForNetworkDelay_sec = 30;
 
             globalDownloadSettings_In.WaitForNetworkRetryCount = 5;
 

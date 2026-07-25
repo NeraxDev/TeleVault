@@ -6,7 +6,7 @@ namespace TeleVault
 {
     public sealed partial class TeleService
     {
-        private void ApplyDownlodGlobalSetting(TeleDownloadTask task, DownloadGlobalSettingsDTO global)
+        private async Task ApplyDownlodGlobalSetting(TeleDownloadTask task, DownloadGlobalSettingsDTO global)
         {
             if (task == null)
                 throw new ArgumentNullException(nameof(task));
@@ -34,13 +34,11 @@ namespace TeleVault
             if (!task.policy.WaitForNetwork)
                 task.policy.WaitForNetwork = global.WaitForNetwork;
 
-            if (task.policy.waitForNetworkTimeout_sec <= 0)
-                task.policy.waitForNetworkTimeout_sec =
-                    global.WaitForNetworkTimeout_sec;
+            if (task.policy.waitForNetworkDelay_sec <= 0)
+                task.policy.waitForNetworkDelay_sec = global.waitForNetworkDelay_sec;
 
             if (task.policy.waitForNetworkRetryCount <= 0)
-                task.policy.waitForNetworkRetryCount =
-                    global.WaitForNetworkRetryCount;
+                task.policy.waitForNetworkRetryCount = global.WaitForNetworkRetryCount;
 
             //========================================
             // Retry
@@ -66,6 +64,9 @@ namespace TeleVault
             //========================================
             task.TempPath = task.TempPath ?? global.TempPath;
             task.DestinationPath = task.DestinationPath ?? global.DestinationPath;
+            task.TempFileName = task.TempFileName ?? task.TempFileName ?? $"{Random.Shared.Next(100000, 999999)}_{DateTime.Now:yyyyMMdd_HHmmss}";
+            task.TempFileExtension = task.TempFileExtension ?? global.TempFileExtension ?? ".tmp";
+
             //========================================
             // Runtime State
             // DO NOT TOUCH

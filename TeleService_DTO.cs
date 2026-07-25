@@ -1,4 +1,5 @@
 ﻿using NeraXTools;
+using NeraXTools.LogManager;
 using Newtonsoft.Json.Linq;
 using System.IO;
 
@@ -11,7 +12,7 @@ namespace TeleVault
         //public bool UseMultiThreaded { get; set; } = true; // This property is not needed anymore, becuse if user not seted this property, This auto matically detect by Size of file .
 
         public bool WaitForNetwork { get; set; } = true;
-        public int WaitForNetworkTimeout_sec { get; set; } = 30;
+        public int waitForNetworkDelay_sec { get; set; } = 30;
         public int WaitForNetworkRetryCount { get; set; } = 5;
         public bool RetryOnError { get; set; } = true;
         public int MaxRetry { get; set; } = 3;
@@ -19,6 +20,8 @@ namespace TeleVault
         public bool MinimizeDiskIO { get; set; } = false;
 
         //----------------------------
+
+        //public string TempFileName  // Dont Need This becuse this temp file name if not seted with user in 'Applay Downlod GLobal Setting', This will be auto generated an numbric File Name  + Data Time Now with out extension. For example: 482913_20260725_071530
 
         private string _tempPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NeraX", "TeleVault", "Temp");
 
@@ -130,8 +133,27 @@ namespace TeleVault
 
         public int GetCurrentChunkSizeValue { get; private set; } = (int)eDownloadChunkSize.MB_1 * 1024 * 128; // Default chunk size for downloads 1 MB
 
+        private string _tempFileExtension = "nxtem";
+
         /// <summary> without dot, for example: "nxtem" or "tempfile"</summary>
-        public string tempExtension { get; } = "nxtem"; // Default file extension for downloaded files
+        public string TempFileExtension
+        {
+            get => _tempFileExtension;
+            set
+            {
+                if (!string.IsNullOrEmpty(_tempFileExtension))
+                {
+                    Logger.log("TempFileExtension is already set. It cannot be changed.", eLogType.Warning, eLogRecordMode.UI);
+                    return;
+                }
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    Logger.log("Null or whitespace value provided for TempFileName. It cannot be changed.", eLogType.Warning, eLogRecordMode.UI);
+                    return;
+                }
+                _tempFileExtension = value.Trim().Trim('.');
+            }
+        }  // Default file extension for downloaded files
 
         private int _rollbackFactor = 3;
 

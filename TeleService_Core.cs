@@ -1,4 +1,5 @@
-﻿using NeraXTools.LogManager;
+﻿using NeraXTools;
+using NeraXTools.LogManager;
 using NeraXTools.TaskManager;
 using System.IO;
 using System.Net;
@@ -49,33 +50,25 @@ namespace TeleVault
             if (task.Chunks.Any()) return;
             if (globalDownloadSettings_In == null)
                 globalDownloadSettings_In = new DownloadGlobalSettingsDTO();
+
             task.FileName = task.Media.FileName;
             task.FileExtension = Path.GetExtension(task.Media.FileName);
-            if (task.FullTempFilePath == null) // HAck : باید چک شود که اگر کاربر خودش مسیر فایل موقت را ست کرده بود، آن را تغییر ندهیم // باید در وقت ست کردن وارپر ها یکی هم برا این بذارم
-                task.FullTempFilePath = Path.Combine(globalDownloadSettings_In.TempPath, $"{task.Media.Id}_{Guid.NewGuid()}.{globalDownloadSettings_In.tempExtension}");
-            else
+
+            await ApplyDownlodGlobalSetting(task, globalDownloadSettings_In);
+
+            if (task.FullTempFilePath == null)
             {
-                // If the user provides a full temporary file path, discard the user-defined
-                // file name and extension. Keep only the destination directory and generate
-                // the temporary file name using the original file name and configured
-                // temporary extension.
-
-                string directory = Directory.Exists(task.FullTempFilePath)
-                    ? task.FullTempFilePath
-                    : Path.GetDirectoryName(task.FullTempFilePath) ?? globalDownloadSettings_In.TempPath;
-
-                task.FullTempFilePath = Path.Combine(
-                    directory,
-                    $"{Path.GetFileNameWithoutExtension(task.FullPath)}.{globalDownloadSettings_In.tempExtension.TrimStart('.')}");
+                Logger.log("FullTempFilePath is null.", eLogType.Error, eLogRecordMode.UI);
+                throw new Exception("FullTempFilePath is null.");
             }
 
-            ApplyDownlodGlobalSetting(task, globalDownloadSettings_In);
             long chunkSize = task.policy.UseMultiThreaded ? task.Media.Size / task.policy.MaxThreads : task.Media.Size;
             for (int i = 0; i < task.policy.MaxThreads; i++)
             {
                 long start = i * chunkSize;
                 long end = (i == task.policy.MaxThreads - 1) ? task.Media.Size - 1 : (start + chunkSize - 1);
-                task.Chunks.Add(new TeleDownloadChunk { StartOffset = start, EndOffset = end, Status = eTeleMediaDownloadStatus.NotStarted });
+                if (!task.AddChunk(start, end))
+                    throw new Exception($" Can't Add Chunk Downlod ID -> {task.Media.Id}");
             }
         }
 
@@ -94,6 +87,19 @@ namespace TeleVault
                 int curentErrorRetryCount = 0;
                 do
                 {
+                    if (task.Status == eTeleMediaDownloadStatus.Paused)
+                    {
+                        Logger.log("Downlod Paused ", eLogType.Info, eLogRecordMode.UI);
+                        break;
+                    }
+                    if (task.Status == eTeleMediaDownloadStatus.Cancelled)
+                    {
+                        task.Chunks.Select(c => c.Status = eTeleMediaDownloadStatus.Cancelled).ToList();
+                        task.ClearChunks();
+                        File.Delete(task.FullTempFilePath); // TODO : باید با ابزار های ایسنک نیراکس تول جایگزین شود
+                        task.DownloadedBytes = 0; // TODO : وقتی دیلیت فایل نیراکس شد این معکوس باید کم بشه مقدارش تا صفر شه و کنسل محسوب شه !
+                        Logger.log("Download Cancelled", eLogType.Info, eLogRecordMode.UI);
+                    }
                     if (task.Status == eTeleMediaDownloadStatus.Error)
                     {
                         if (curentErrorRetryCount >= task.policy.MaxRetry)
@@ -105,7 +111,7 @@ namespace TeleVault
                         {
                             task.Status = eTeleMediaDownloadStatus.Watching;
                             task.policy.currentRetryCountForNetwork++;
-                            await Task.Delay(task.policy.RetryDelay_sec * 1000, ct);
+                            await Task.Delay(task.policy.waitForNetworkDelay_sec * 1000, ct);
                         }
                         else
                         {
@@ -165,6 +171,7 @@ namespace TeleVault
                         // این‌ها «قطعی اینترنت» نیستند!
                         // مستقیم ارور ست میکنیم اینجا چون ارور واقعا از سمت تلگرام هست و نه اینترنت
                         task.Status = eTeleMediaDownloadStatus.Error;
+                        Logger.log($"Telegram RpcException \n\t Exception : {ex.Message}", eLogType.Exception, eLogRecordMode.UI);
                     }
                     catch (System.IO.IOException ex)
                     {
@@ -188,7 +195,7 @@ namespace TeleVault
                     }
                     catch (Exception ex)
                     {
-                        // این یک ارور ناشناخته است، ممکن است از تلگرام باشد یا از اینترنت
+                        // این یک ارور ناشناخته است، ممکن است از تلگرام باشد یا از اینترنت یا حتا در کانفیگ و یا در دانلود
                         task.Status = eTeleMediaDownloadStatus.Error;
                     }
                     finally
@@ -200,12 +207,15 @@ namespace TeleVault
                     }
                 }
                 while (task.policy.RetryOnError && task.Status == eTeleMediaDownloadStatus.Error);
+
+                if (task.Status != eTeleMediaDownloadStatus.Completed || task.Status != eTeleMediaDownloadStatus.Paused || task.Status != eTeleMediaDownloadStatus.Finalizing)
+                    throw new Exception("Download failed after maximum retries.");
             }
             catch (Exception ex)
             {
                 task.Status = eTeleMediaDownloadStatus.Failed;
                 task.Chunks.Select(c => c.Status = eTeleMediaDownloadStatus.Failed).ToList();
-                // TODO: Must be replaced with internal NeraXTools utility  // TODO : باید با ابزار داخلی نیراکس تولز رپلیس شود
+                Logger.log($"Download Failed ! \n \t File ID  : {task.Media.Id}", eLogType.Info, eLogRecordMode.UI);
             }
         }
 
@@ -225,7 +235,7 @@ namespace TeleVault
             {
                 using (var fs = new FileStream(task.FullTempFilePath, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite))
                 {
-                    while (currentOffset <= chunk.EndOffset && chunk.Status != eTeleMediaDownloadStatus.Finalizing && chunk.Status != eTeleMediaDownloadStatus.Paused && !ct.IsCancellationRequested)
+                    while (currentOffset <= chunk.EndOffset && chunk.Status != eTeleMediaDownloadStatus.Finalizing && chunk.Status != eTeleMediaDownloadStatus.Paused && chunk.Status != eTeleMediaDownloadStatus.Cancelled && !ct.IsCancellationRequested)
                     {
                         int limit = globalDownloadSettings_In.GetCurrentChunkSizeValue;
                         if (currentOffset + limit > chunk.EndOffset)
@@ -247,7 +257,7 @@ namespace TeleVault
                     }
                 }
             }
-            finally { chunk.Status = eTeleMediaDownloadStatus.Error; } // if an exception occurs, mark the chunk as Error. This will allow the retry mechanism to handle it appropriately.
+            finally { chunk.Status = eTeleMediaDownloadStatus.Error; } // if an exception occurs, mark the chunk as Error. This will allow the retry mechanism to handle it appropriately. // Dont Worry , if the chunk is completed, it will be set to Completed in the next line.
 
             chunk.Status = eTeleMediaDownloadStatus.Completed;
         }

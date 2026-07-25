@@ -7,7 +7,7 @@
     { All, Photo, Document }
 
     public enum eTeleMediaDownloadStatus
-    { NotStarted, InProgress, Completed, Failed, Error, Watching, Paused, Finalizing }
+    { NotStarted, InProgress, Completed, Failed, Error, Watching, Paused, Finalizing, Cancelled }
 
     public enum eTelePerrType
     { User, Chat, Channel }
