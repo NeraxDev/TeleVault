@@ -5,6 +5,10 @@ using System.Data;
 using System.IO;
 using TL;
 
+// Emoji Guide : 🚨 🔂 🌵
+// هنوز پیاده سازی نشده  --> 🌵
+// هنوز در ست کننده و گلوبال دیتا نیست --> 🚨
+//  اینا برا نمایش لحظه ای کاربر هستن و نباید توی تنظیمات ذخیره بشن --> 🔂
 namespace TeleVault
 {
     public sealed class TeleMediaInfo
@@ -212,29 +216,29 @@ namespace TeleVault
         public int waitForNetworkTimeout_sec { get; set; }
         public int waitForNetworkRetryCount { get; set; }
 
-        // -------- اینا برا نمایش لحظه ای کاربر هستن و نباید توی تنظیمات ذخیره بشن
-        public int currentRetryCountForNetwork { get; set; } = 0;
+        // --------  🔂
+        public int currentRetryCountForNetwork { get; set; } = 0; //🔂
 
         //------------------------------------------------
 
         /// <summary>
         /// Enable automatic start/pause scheduling.
         /// </summary>
-        public bool UseSchedule { get; set; }
+        public bool UseSchedule { get; set; } // 🌵
 
         /// <summary>
         /// Automatic start date and time.
         /// Set using CreateDateTime Method or directly.
         /// </summary>
-        public DateTime AutoStartDateTime { get; set; }
+        public DateTime AutoStartDateTime { get; set; } // 🌵 🚨
 
         /// <summary>
         /// Automatic pause date and time.
         /// Set using CreateDateTime Method or directly.
         /// </summary>
-        public DateTime AutoPauseDateTime { get; set; }
+        public DateTime AutoPauseDateTime { get; set; }// 🌵 🚨
 
-        // -------- اینا برا نمایش لحظه ای کاربر هستن و نباید توی تنظیمات ذخیره بشن
+        // -------- 🔂
         /// <summary>
         /// Remaining time until automatic start.
         /// Returns TimeSpan.Zero if schedule is disabled or date is not configured.
@@ -253,7 +257,7 @@ namespace TeleVault
                     ? remaining
                     : TimeSpan.Zero;
             }
-        }
+        }//🔂
 
         /// <summary>
         /// Remaining time until automatic pause.
@@ -273,7 +277,7 @@ namespace TeleVault
                     ? remaining
                     : TimeSpan.Zero;
             }
-        }
+        }//🔂
 
         /// <summary>
         /// Remaining time between automatic start and automatic pause.
@@ -294,7 +298,7 @@ namespace TeleVault
                     ? duration
                     : TimeSpan.Zero;
             }
-        }
+        }//🔂
 
         //----------------------------
         public bool RetryOnError { get; set; }
@@ -304,28 +308,28 @@ namespace TeleVault
 
         //------------------------------------------------------------------------------------
         /// <summary> If true, the download will be skipped if the file already exists at the destination path. If false, the existing file will be overwritten.</summary>
-        public bool skipIfFileExists { get; set; }
+        public bool skipIfFileExists { get; set; } // 🚨 🌵
 
         /// <summary>If true, the existing file will be overwritten if it already exists at the destination path. If false, the download will be Maked with Another Name.</summary>
-        public bool overwriteIfFileExists { get; set; }
+        public bool overwriteIfFileExists { get; set; }   // 🚨 🌵
 
-        private bool addToRearOfQueueAfterFailur { get; set; }
+        //------------------------------------------------------------------------------------
+        private bool addToRearOfQueueAfterFailure { get; set; }
 
-        //--
         /// <summary> If true, the download will be added to the rear of the queue after a failure. If false, the download will be Failed. </summary>
-        public bool AddToRearOfQueueAfterFailure { get => FailCount >= MaxFailCount ? false : addToRearOfQueueAfterFailur ? true : false; set => addToRearOfQueueAfterFailur = value; }
+        public bool AddToRearOfQueueAfterFailure { get => FailCount >= MaxFailCount ? false : addToRearOfQueueAfterFailure ? true : false; set => addToRearOfQueueAfterFailure = value; } // 🚨 🌵
 
         private bool removeFromQueueAfterFailure { get; set; }
 
         /// <summary> If true, the download will be removed from the queue after a failure. If false, the download will be added to the rear of the queue after a failure or the downlod will be Failed. </summary>
-        public bool RemoveFromQueueAfterFailure { get => AddToRearOfQueueAfterFailure ? false : removeFromQueueAfterFailure ? true : false; set => removeFromQueueAfterFailure = value; }
+        public bool RemoveFromQueueAfterFailure { get => AddToRearOfQueueAfterFailure ? false : removeFromQueueAfterFailure ? true : false; set => removeFromQueueAfterFailure = value; } // 🚨 🌵
 
-        public int FailCount { get; set; }
-        public int MaxFailCount { get; set; }
+        public int FailCount { get; set; } // 🔂
+        public int MaxFailCount { get; set; }  // 🚨 🌵
         //--
 
         //-------------------------------------------------------------------------------------
         // تنظیماتِ حافظه/دیسک
-        public bool MinimizeDiskIO { get; set; } // هنوز ست نشده باید بعدا ست شه !
+        public bool MinimizeDiskIO { get; set; } // 🌵
     }
 }

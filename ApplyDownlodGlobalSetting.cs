@@ -59,8 +59,8 @@ namespace TeleVault
             // Disk
             //========================================
 
-            if (!task.policy.MinimizeDiskIO)
-                task.policy.MinimizeDiskIO = global.MinimizeDiskIO;
+            if (!task.policy.MinimizeDiskIO) //🌵
+                task.policy.MinimizeDiskIO = global.MinimizeDiskIO; // 🌵
             //========================================
             // Paths
             //========================================
