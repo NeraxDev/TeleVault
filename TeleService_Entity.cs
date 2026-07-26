@@ -294,9 +294,7 @@ namespace TeleVault
 
             // بررسی Enum
             if (!Enum.IsDefined(typeof(eTeleMediaDownloadStatus), status))
-            {
                 status = eTeleMediaDownloadStatus.NotStarted;
-            }
 
             // ساخت داخلی
             var chunk = new TeleDownloadChunk
@@ -339,6 +337,10 @@ namespace TeleVault
         public int MaxThreads { get; set; } //✅
 
         public bool UseMultiThreaded { get; set; } //✅
+
+        public eDownloadChunkSize SetChunkSize { set => GetChunkSizeValue = (int)value * 1024 * 128; } //✅
+
+        public int? GetChunkSizeValue { get; private set; } //✅
 
         // تنظیماتِ خودکارسازی (Auto-Resume)
         public bool WaitForNetwork { get; set; } //✅
@@ -433,8 +435,8 @@ namespace TeleVault
         //----------------------------
         public bool RetryOnError { get; set; } //✅
 
-        public int MaxRetry { get; set; }
-        public int RetryDelay_sec { get; set; }
+        public int MaxRetry { get; set; } //✅
+        public int RetryDelay_sec { get; set; } //✅
 
         //------------------------------------------------------------------------------------
         /// <summary> If true, the download will be skipped if the file already exists at the destination path. If false, the existing file will be overwritten.</summary>
@@ -444,18 +446,38 @@ namespace TeleVault
         public bool overwriteIfFileExists { get; set; }   // 🚨 🌵
 
         //------------------------------------------------------------------------------------
-        private bool addToRearOfQueueAfterFailure { get; set; }
+        private bool? _addToRearOfQueueAfterFailure { get; set; }
 
         /// <summary> If true, the download will be added to the rear of the queue after a failure. If false, the download will be Failed. </summary>
-        public bool AddToRearOfQueueAfterFailure { get => FailCount >= MaxFailCount ? false : addToRearOfQueueAfterFailure ? true : false; set => addToRearOfQueueAfterFailure = value; } // 🚨 🌵
+        public bool? AddToRearOfQueueAfterFailure
+        {
+            get =>
+                curentFailCount >= MaxFail
+                    ? false
+                    : _addToRearOfQueueAfterFailure;
 
-        private bool removeFromQueueAfterFailure { get; set; }
+            set =>
+                _addToRearOfQueueAfterFailure = value;
+        } //  🌵
+
+        private bool? _removeFromQueueAfterFailure { get; set; }
 
         /// <summary> If true, the download will be removed from the queue after a failure. If false, the download will be added to the rear of the queue after a failure or the downlod will be Failed. </summary>
-        public bool RemoveFromQueueAfterFailure { get => AddToRearOfQueueAfterFailure ? false : removeFromQueueAfterFailure ? true : false; set => removeFromQueueAfterFailure = value; } // 🚨 🌵
+        public bool? RemoveFromQueueAfterFailure
+        {
+            get
+            {
+                if (_addToRearOfQueueAfterFailure == true)
+                    return false;
+                if (_removeFromQueueAfterFailure == null)
+                    return null;
+                return curentFailCount >= MaxFail ? true : false;
+            }
+            set => _removeFromQueueAfterFailure = value;
+        }
 
-        public int FailCount { get; set; } // 🔂
-        public int MaxFailCount { get; set; }  // 🚨 🌵
+        public int curentFailCount { get; set; } // 🔂
+        public int MaxFail { get; set; }  // 🌵
         //--
 
         //-------------------------------------------------------------------------------------

@@ -25,6 +25,9 @@ namespace TeleVault
             if (!task.policy.UseMultiThreaded)
                 task.policy.UseMultiThreaded = task.Media.Size > 10 * 1024 * 1024;
 
+            if (task.policy.GetChunkSizeValue == null)
+                task.policy.SetChunkSize = (eDownloadChunkSize)(globalDownloadSettings_In.GetChunkSizeValue / 1024 / 128);
+
             task.isOnMoving = false;
 
             //========================================
@@ -67,6 +70,12 @@ namespace TeleVault
             task.TempFileName = task.TempFileName ?? task.TempFileName ?? $"{Random.Shared.Next(100000, 999999)}_{DateTime.Now:yyyyMMdd_HHmmss}";
             task.TempFileExtension = task.TempFileExtension ?? global.TempFileExtension ?? ".tmp";
 
+            //========================================
+            // Fial
+            //========================================
+            task.policy.MaxFail = task.policy.MaxFail <= 0 ? global.MaxFail : task.policy.MaxFail;
+            task.policy.AddToRearOfQueueAfterFailure = task.policy.AddToRearOfQueueAfterFailure ?? global.AddToRearOfQueueAfterFailure;
+            task.policy.RemoveFromQueueAfterFailure = task.policy.RemoveFromQueueAfterFailure ?? global.RemoveFromQueueAfterFailure;
             //========================================
             // Runtime State
             // DO NOT TOUCH

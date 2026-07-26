@@ -212,7 +212,7 @@ namespace TeleVault
            => globalDownloadSettings_In.SetDownloadSemaphore(count);
 
         public void SetDownloadChunkSize(eDownloadChunkSize size)
-          => globalDownloadSettings_In.SetCurrentChunkSize = size;
+          => globalDownloadSettings_In.SetChunkSize = size;
 
         public void SetDefaultDownloadGlobalSettings()
         {

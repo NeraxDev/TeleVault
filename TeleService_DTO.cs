@@ -17,6 +17,9 @@ namespace TeleVault
         public bool RetryOnError { get; set; } = true;
         public int MaxRetry { get; set; } = 3;
         public int RetryDelay_sec { get; set; } = 5;
+        public int MaxFail { get; set; } = 1;
+        public bool AddToRearOfQueueAfterFailure { get; set; } = false;
+        public bool RemoveFromQueueAfterFailure { get; set; } = false;
         public bool MinimizeDiskIO { get; set; } = false;
 
         //----------------------------
@@ -123,15 +126,9 @@ namespace TeleVault
             else throw new ArgumentOutOfRangeException(nameof(value));
         }
 
-        public eDownloadChunkSize SetCurrentChunkSize
-        {
-            set
-            {
-                GetCurrentChunkSizeValue = (int)value * 1024 * 128;
-            }
-        }
+        public eDownloadChunkSize SetChunkSize { set => GetChunkSizeValue = (int)value * 1024 * 128; }
 
-        public int GetCurrentChunkSizeValue { get; private set; } = (int)eDownloadChunkSize.MB_1 * 1024 * 128; // Default chunk size for downloads 1 MB
+        public int GetChunkSizeValue { get; private set; } = (int)eDownloadChunkSize.MB_1 * 1024 * 128; // Default chunk size for downloads 1 MB
 
         private string _tempFileExtension = "nxtem";
 
@@ -163,11 +160,8 @@ namespace TeleVault
             set => _rollbackFactor = Math.Clamp(value, 1, 10);
         }
 
-        public int GetRollbackSize() => GetCurrentChunkSizeValue * RollbackFactor;
+        public int GetRollbackSize(eDownloadChunkSize chunkSize) => ((int)chunkSize * 1024 * 128) * RollbackFactor;
 
         //--
-        public bool AddToRearOfQueueAfterFailure { get; set; } = true;
-
-        public bool RemoveFromQueueAfterFailure { get; set; } = false;
     }
 }

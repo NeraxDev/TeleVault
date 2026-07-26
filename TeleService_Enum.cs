@@ -18,6 +18,7 @@
     public enum eDownloadPriority
     { High = 1, Medium = 2, Low = 3 }
 
+    /// <summary>  Enum values are multiples of 128KB  </summary>
     public enum eDownloadChunkSize
     {
         KB_128 = 1,    // 128 KB

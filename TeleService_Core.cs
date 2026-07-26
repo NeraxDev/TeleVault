@@ -2,6 +2,7 @@
 using NeraXTools.LogManager;
 using NeraXTools.TaskManager;
 using System.IO;
+using System.Linq.Expressions;
 using System.Net;
 using System.Windows;
 using TL;
@@ -68,7 +69,10 @@ namespace TeleVault
                 long start = i * chunkSize;
                 long end = (i == task.policy.MaxThreads - 1) ? task.Media.Size - 1 : (start + chunkSize - 1);
                 if (!task.AddChunk(start, end))
+                {
+                    task.ClearChunks(); // Clear any chunks that were added before the failure For try again in next round
                     throw new Exception($" Can't Add Chunk Downlod ID -> {task.Media.Id}");
+                }
             }
         }
 
@@ -180,7 +184,7 @@ namespace TeleVault
                     }
                     catch (System.Net.Sockets.SocketException)
                     {
-                        int rollbackSize = globalDownloadSettings_In.GetRollbackSize();
+                        int rollbackSize = globalDownloadSettings_In.GetRollbackSize(task.policy.GetChunkSizeValue == null ? eDownloadChunkSize.MB_1 : (eDownloadChunkSize)(task.policy.GetChunkSizeValue / 1024 / 128));
                         foreach (var chunk in task.Chunks)
                         {
                             if (chunk.Status == eTeleMediaDownloadStatus.Error)
@@ -191,12 +195,13 @@ namespace TeleVault
                     }
                     catch (Exception ex) when (ex.Message.Contains("No such host") || ex.Message.Contains("Name resolution failure"))
                     {
-                        // DNS مشکل دارد یا اینترنت کاملاً قطع است
+                        task.Status = eTeleMediaDownloadStatus.Error;
+                        Logger.log($"Network/DNS issue detected! \n Exception Message : {ex.Message} \n Download ID -> {task.Media.Id}", eLogType.Exception, eLogRecordMode.UI);
                     }
                     catch (Exception ex)
                     {
-                        // این یک ارور ناشناخته است، ممکن است از تلگرام باشد یا از اینترنت یا حتا در کانفیگ و یا در دانلود
                         task.Status = eTeleMediaDownloadStatus.Error;
+                        Logger.log($"Unexpected error occurred \n Exception Message : {ex.Message} \n Download ID -> {task.Media.Id}", eLogType.Exception, eLogRecordMode.UI);
                     }
                     finally
                     {
@@ -215,6 +220,9 @@ namespace TeleVault
             {
                 task.Status = eTeleMediaDownloadStatus.Failed;
                 task.Chunks.Select(c => c.Status = eTeleMediaDownloadStatus.Failed).ToList();
+                task.ClearChunks();
+                File.Delete(task.FullTempFilePath); // TODO : باید با ابزار های ایسنک نیراکس تول جایگزین شود
+                task.DownloadedBytes = 0; // TODO : وقتی دیلیت فایل نیراکس شد این معکوس باید کم بشه مقدارش تا صفر شه تا نمایش دهنده درجه حذف محسوب شه !
                 Logger.log($"Download Failed ! \n \t File ID  : {task.Media.Id}", eLogType.Info, eLogRecordMode.UI);
             }
         }
@@ -237,7 +245,7 @@ namespace TeleVault
                 {
                     while (currentOffset <= chunk.EndOffset && chunk.Status != eTeleMediaDownloadStatus.Finalizing && chunk.Status != eTeleMediaDownloadStatus.Paused && chunk.Status != eTeleMediaDownloadStatus.Cancelled && !ct.IsCancellationRequested)
                     {
-                        int limit = globalDownloadSettings_In.GetCurrentChunkSizeValue;
+                        int limit = task.policy.GetChunkSizeValue;
                         if (currentOffset + limit > chunk.EndOffset)
                             limit = (int)(chunk.EndOffset - currentOffset + 1);
                         var result = await client.Upload_GetFile(task.Media.Location, currentOffset, limit);
