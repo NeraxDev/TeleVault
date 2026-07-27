@@ -245,7 +245,7 @@ namespace TeleVault
                 {
                     while (currentOffset <= chunk.EndOffset && chunk.Status != eTeleMediaDownloadStatus.Finalizing && chunk.Status != eTeleMediaDownloadStatus.Paused && chunk.Status != eTeleMediaDownloadStatus.Cancelled && !ct.IsCancellationRequested)
                     {
-                        int limit = task.policy.GetChunkSizeValue;
+                        int limit = task.policy.GetChunkSizeValue ?? (int)eDownloadChunkSize.MB_1 * 1024 * 128; // Use default chunk size if not set
                         if (currentOffset + limit > chunk.EndOffset)
                             limit = (int)(chunk.EndOffset - currentOffset + 1);
                         var result = await client.Upload_GetFile(task.Media.Location, currentOffset, limit);
